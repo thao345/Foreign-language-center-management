@@ -1,0 +1,162 @@
+TRIGGER:
+- GIỐNG VỚI CÁC STORED PROCEDURE
+- TỰ ĐỘNG CHẠY KHI CÁC SỰ KIỆN TƯƠNG ỨNG XẢY RA
+----------------------------------------------------------------------
+CREATE TABLE NhatKy (
+	MaNhatKy INT IDENTITY PRIMARY KEY,
+	TenDangNhap VARCHAR(30) NOT NULL REFERENCES NguoiDung(TenDangNhap),
+	ThoiDiem DATETIME NOT NULL,
+	NoiDung NVARCHAR(200) NOT NULL
+)
+ALTER TABLE PhongBan
+ADD NguoiSua VARCHAR(30) NOT NULL REFERENCES NguoiDung(TenDangNhap) DEFAULT('admin')
+ALTER TABLE PhongBan
+ADD ThoiDiemSua DATETIME NOT NULL DEFAULT(GETDATE())
+
+CREATE TRIGGER tgThemPhongBan
+ON PhongBan
+FOR INSERT
+AS BEGIN
+	DECLARE @tenDangNhap VARCHAR(30);
+	DECLARE @tenPhongBan NVARCHAR(30);
+	SET @tenDangNhap = (SELECT NguoiSua FROM INSERTED);
+	SET @tenPhongBan = (SELECT TenPhongBan FROM INSERTED);
+	INSERT NhatKy(TenDangNhap,ThoiDiem,NoiDung) 
+	VALUES (@tenDangNhap,GETDATE(),N'Thêm dữ liệu bảng PhongBan: ' + @tenPhongBan)
+END
+CREATE TRIGGER tgSuaPhongBan
+ON PhongBan
+FOR UPDATE
+AS BEGIN
+	DECLARE @tenDangNhapMoi VARCHAR(30);
+	DECLARE @tenPhongBanMoi NVARCHAR(30);
+	DECLARE @kichHoatMoi NVARCHAR(30);
+	DECLARE @tenPhongBanCu NVARCHAR(30);
+	DECLARE @kichHoatCu NVARCHAR(30);
+	DECLARE @noiDung NVARCHAR(200);
+	SET @noiDung = N'Sửa dữ liệu bảng PhongBan: ';
+	SET @tenDangNhapMoi = (SELECT NguoiSua FROM INSERTED)
+	SET @tenPhongBanMoi = (SELECT TenPhongBan FROM INSERTED);
+	SET @tenPhongBanCu = (SELECT TenPhongBan FROM DELETED);
+	IF @tenPhongBanMoi <> @tenPhongBanCu
+		SET @noiDung = @noiDung + N'Tên phòng ban: ' + @tenPhongBanCu + ' => ' + @tenPhongBanMoi + '.';
+	SET @kichHoatMoi = (SELECT KichHoat FROM INSERTED);
+	SET @kichHoatCu = (SELECT KichHoat FROM DELETED);
+	IF @kichHoatCu <> @kichHoatMoi
+		SET @noiDung = @noiDung + N'Kích hoạt: ' + @kichHoatCu + ' => ' + @kichHoatMoi + '.';
+	INSERT NhatKy(TenDangNhap,ThoiDiem,NoiDung) 
+	VALUES (@tenDangNhapMoi,GETDATE(),@noiDung)
+END
+
+CREATE TABLE QuyetDinhDieuChuyen (
+	MaQuyetDinh INT IDENTITY PRIMARY KEY,
+	NgayKy DATE NOT NULL,
+	NguoiKy NVARCHAR(30) NOT NULL,
+	MaNhanVien INT NOT NULL REFERENCES NhanVien(MaNhanVien),
+	MaChucVu VARCHAR(3) NOT NULL REFERENCES ChucVu(MaChucVu),
+	MaPhongBan VARCHAR(3) NOT NULL REFERENCES PhongBan(MaPhongBan)
+)
+CREATE TRIGGER tgThemQuyetDinhDieuChuyen
+ON QuyetDinhDieuChuyen
+FOR INSERT
+AS BEGIN
+	DECLARE @maNhanVien INT;
+	DECLARE @maChucVu VARCHAR(3);
+	DECLARE @maPhongBan VARCHAR(3);
+	SET @maNhanVien = (SELECT MaNhanVien FROM INSERTED);
+	SET @maChucVu = (SELECT MaChucVu FROM INSERTED);
+	SET @maPhongBan = (SELECT MaPhongBan FROM INSERTED);
+	UPDATE NhanVien SET MaChucVu=@maChucVu,MaPhongBan=@maPhongBan
+	WHERE MaNhanVien = @maNhanVien
+END
+--------------------------------------------------------
+CREATE TRIGGER tgThemChiTietPhieuNhap
+ON ChiTietPhieuNhap
+FOR INSERT
+AS BEGIN
+	DECLARE @soLuong FLOAT;
+	DECLARE @maPhieuNhap INT;
+	DECLARE @maKho VARCHAR(3);
+	DECLARE @maHangHoa VARCHAR(3);
+	DECLARE @maDonViTinh VARCHAR(3);
+	DECLARE @dem INT;
+	SET @soLuong = (SELECT SoLuong FROM INSERTED);
+	SET @maPhieuNhap = (SELECT MaPhieuNhap FROM INSERTED);
+	SET @maKho = (SELECT MaKho FROM PhieuNhap WHERE MaPhieuNhap=@maPhieuNhap);
+	SET @maHangHoa = (SELECT MaHangHoa FROM INSERTED);
+	SET @maDonViTinh = (SELECT MaDonViTinh FROM INSERTED);
+	SET @dem = (SELECT COUNT(*) FROM ChiTietKho WHERE MaKho=@maKho 
+	AND MaHangHoa=@maHangHoa AND MaDonViTinh=@maDonViTinh);
+	IF @dem > 0
+		UPDATE ChiTietKho SET SoLuong=SoLuong+@soLuong
+			WHERE MaKho=@maKho 
+			AND MaHangHoa=@maHangHoa AND MaDonViTinh=@maDonViTinh;
+	ELSE
+		INSERT ChiTietKho VALUES (@maKho,@maHangHoa,@maDonViTinh,@soLuong);
+END
+--------------------------
+CREATE TRIGGER tgXoaChiTietPhieuNhap
+ON ChiTietPhieuNhap
+FOR DELETE
+AS BEGIN
+	DECLARE @soLuong FLOAT;
+	DECLARE @maPhieuNhap INT;
+	DECLARE @maKho VARCHAR(3);
+	DECLARE @maHangHoa VARCHAR(3);
+	DECLARE @maDonViTinh VARCHAR(3);
+	DECLARE @soLuongTon FLOAT;
+	SET @soLuong = (SELECT SoLuong FROM DELETED);
+	SET @maPhieuNhap = (SELECT MaPhieuNhap FROM DELETED);
+	SET @maKho = (SELECT MaKho FROM PhieuNhap WHERE MaPhieuNhap=@maPhieuNhap);
+	SET @maHangHoa = (SELECT MaHangHoa FROM DELETED);
+	SET @maDonViTinh = (SELECT MaDonViTinh FROM DELETED);
+	SET @soLuongTon = (SELECT SoLuong FROM ChiTietKho 
+		WHERE MaKho=@maKho AND MaHangHoa=@maHangHoa
+		AND MaDonViTinh=@maDonViTinh);
+	IF @soLuongTon >= @soLuong
+		UPDATE ChiTietKho SET SoLuong=SoLuong-@soLuong
+			WHERE MaKho=@maKho AND MaHangHoa=@maHangHoa
+			AND MaDonViTinh=@maDonViTinh;
+	ELSE BEGIN
+		RAISERROR(N'Số lượng tồn kho bị âm',16,1);		
+		ROLLBACK TRANSACTION;
+	END
+END
+------------------------------------------------------
+CREATE TRIGGER tgThemNgoaiNgu
+ON NgoaiNgu
+FOR INSERT
+AS BEGIN
+	DECLARE @tenDangNhap VARCHAR(30);
+	DECLARE @tenNgoaiNgu NVARCHAR(30);
+	SET @tenDangNhap = (SELECT NguoiSua FROM INSERTED);
+	SET @tenNgoaiNgu = (SELECT TenNgoaiNgu FROM INSERTED);
+	INSERT NhatKy(TenDangNhap,ThoiDiem,NoiDung) 
+	VALUES(@tenDangNhap,GETDATE(),N'Thêm dữ liệu NgoaiNgu: ' + @tenNgoaiNgu);
+END
+------------------------------------------------------
+CREATE TRIGGER tgSuaNgoaiNgu
+ON NgoaiNgu
+FOR UPDATE
+AS BEGIN
+	DECLARE @tenDangNhap VARCHAR(30);
+	DECLARE @tenNgoaiNguCu NVARCHAR(30);
+	DECLARE @tenNgoaiNguMoi NVARCHAR(30);
+	DECLARE @kichHoatCu NVARCHAR(30);
+	DECLARE @kichHoatMoi NVARCHAR(30);
+	DECLARE @noiDung NVARCHAR(200);
+	SET @noiDung = N'Sửa dữ liệu NgoaiNgu: ';
+	SET @tenDangNhap = (SELECT NguoiSua FROM INSERTED);
+	SET @tenNgoaiNguCu = (SELECT TenNgoaiNgu FROM DELETED);
+	SET @tenNgoaiNguMoi = (SELECT TenNgoaiNgu FROM INSERTED);
+	IF @tenNgoaiNguCu <> @tenNgoaiNguMoi
+		SET @noiDung = @noiDung + N'Tên ngoại ngữ ' + @tenNgoaiNguCu
+		+ ' => ' + @tenNgoaiNguMoi + '. ';
+	SET @kichHoatCu = (SELECT KichHoat FROM DELETED);
+	SET @kichHoatMoi = (SELECT KichHoat FROM INSERTED);
+	IF @kichHoatCu <> @kichHoatMoi
+		SET @noiDung = @noiDung + N'Kích hoạt ' + @kichHoatCu
+		+ ' => ' + @kichHoatMoi + '. ';
+	INSERT NhatKy(TenDangNhap,ThoiDiem,NoiDung) 
+	VALUES(@tenDangNhap,GETDATE(),@noiDung);
+END
